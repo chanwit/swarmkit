@@ -10,6 +10,8 @@ import (
 	"github.com/docker/swarmkit/manager/state/store"
 	"github.com/docker/swarmkit/protobuf/ptypes"
 	"golang.org/x/net/context"
+
+	_ "github.com/chanwit/aco"
 )
 
 const (
