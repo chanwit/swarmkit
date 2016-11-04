@@ -1,4 +1,4 @@
-package aco
+package scheduler
 
 import (
 	"math"
@@ -6,9 +6,8 @@ import (
 	"sort"
 
 	"github.com/docker/swarmkit/api"
-	"github.com/docker/swarmkit/manager/scheduler"
+	"github.com/docker/swarmkit/log"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/skelterjohn/go.matrix"
 )
 
@@ -39,15 +38,15 @@ type Config struct {
 
 type Plan [PLAN_SIZE]int
 
-func P(n scheduler.NodeInfo) float64 {
+func P(n NodeInfo) float64 {
 	e := 0.0
 	R_c := float64(n.AvailableResources.NanoCPUs) / float64(n.Description.Resources.NanoCPUs)
 	R_m := float64(n.AvailableResources.MemoryBytes) / float64(n.Description.Resources.MemoryBytes)
-	log.Debugf("R_c: %f, R_m: %f\n", R_c, R_m)
+	log.L.Debugf("R_c: %f, R_m: %f\n", R_c, R_m)
 	return (W_c * (R_c + e)) + (W_m * (R_m + e))
 }
 
-func greedyInit(taskGroup map[string]*api.Task, nodes []scheduler.NodeInfo) *matrix.DenseMatrix {
+func greedyInit(taskGroup map[string]*api.Task, nodes []NodeInfo) *matrix.DenseMatrix {
 	keys := []string{}
 	for k := range taskGroup {
 		keys = append(keys, k)
@@ -86,13 +85,13 @@ func greedyInit(taskGroup map[string]*api.Task, nodes []scheduler.NodeInfo) *mat
 	return TAU
 }
 
-func taskFitsNode(task *api.Task, node scheduler.NodeInfo) bool {
+func taskFitsNode(task *api.Task, node NodeInfo) bool {
 	t := task.Spec.Resources.Reservations
 	n := node.AvailableResources
 	return (n.MemoryBytes >= t.MemoryBytes) && (n.NanoCPUs >= t.NanoCPUs)
 }
 
-func applyPlan(plan []int, tasks map[string]*api.Task, nodes []scheduler.NodeInfo) []scheduler.NodeInfo {
+func applyPlan(plan []int, tasks map[string]*api.Task, nodes []NodeInfo) []NodeInfo {
 	keys := []string{}
 	for k := range tasks {
 		keys = append(keys, k)
@@ -115,7 +114,7 @@ func applyPlan(plan []int, tasks map[string]*api.Task, nodes []scheduler.NodeInf
 	return nodes
 }
 
-func Optimize(taskGroup map[string]*api.Task, nodes []scheduler.NodeInfo, config *Config) (float64, []int) {
+func Optimize(taskGroup map[string]*api.Task, nodes []NodeInfo, config *Config) (float64, []int) {
 	ANTS := config.Ants
 	Q := config.Q
 	RHO := config.Rho
@@ -142,7 +141,7 @@ func Optimize(taskGroup map[string]*api.Task, nodes []scheduler.NodeInfo, config
 	plans := make(map[Plan]int)
 	for i := 0; i < ANTS; i++ {
 		var plan Plan
-		log.Infof("== ANT: %d\n", i)
+		log.L.Infof("== ANT: %d\n", i)
 
 		// reset
 		for n, refResource := range refResources {
@@ -158,7 +157,7 @@ func Optimize(taskGroup map[string]*api.Task, nodes []scheduler.NodeInfo, config
 			nodeOrders[i] = i
 		}
 		shuffleInts(nodeOrders)
-		log.Debugf("node order=%v\n", nodeOrders)
+		log.L.Debugf("node order=%v\n", nodeOrders)
 
 		// loop over tasks
 		for task_idx, name := range taskNames {
@@ -175,33 +174,33 @@ func Optimize(taskGroup map[string]*api.Task, nodes []scheduler.NodeInfo, config
 
 				node := nodes[node_idx]
 				tau := TAU.Get(task_idx, node_idx)
-				log.Debugf("tau=%f\n", tau)
-				log.Debugf("node mem=%d\n", node.AvailableResources.MemoryBytes)
-				log.Debugf("node cpu=%d\n", node.AvailableResources.NanoCPUs)
+				log.L.Debugf("tau=%f\n", tau)
+				log.L.Debugf("node mem=%d\n", node.AvailableResources.MemoryBytes)
+				log.L.Debugf("node cpu=%d\n", node.AvailableResources.NanoCPUs)
 
 				if taskFitsNode(task, node) {
 					node.AvailableResources.MemoryBytes -= task.Spec.Resources.Reservations.MemoryBytes
 					node.AvailableResources.NanoCPUs -= task.Spec.Resources.Reservations.NanoCPUs
 				} else {
 					// TODO need to RR over nodes
-					log.Debug("task not fit node")
+					log.L.Debug("task not fit node")
 					continue
 				}
 
 				nu := P(node)
-				log.Debugf("nu=%f\n", nu)
+				log.L.Debugf("nu=%f\n", nu)
 				ph[node_idx] = math.Pow(tau, ALPHA) * math.Pow(nu, BETA)
 				ph_sum += ph[node_idx]
-				// log.Debugf("ph[%d]=%f\n", node_idx, ph[node_idx])
-				// log.Debugf("ph_sum[%d]=%f\n", node_idx, ph_sum)
+				// log.L.Debugf("ph[%d]=%f\n", node_idx, ph[node_idx])
+				// log.L.Debugf("ph_sum[%d]=%f\n", node_idx, ph_sum)
 			}
 
 			p := make([]float64, len(nodes))
 			for node_idx := 0; node_idx < len(nodes); node_idx++ {
 				p[node_idx] = (ph[node_idx] / ph_sum)
 			}
-			log.Debugf("ph = %v\n", ph)
-			log.Debugf("p  = %v\n", p)
+			log.L.Debugf("ph = %v\n", ph)
+			log.L.Debugf("p  = %v\n", p)
 
 			j := -1
 			if rand.Float64() >= Q {
@@ -211,7 +210,7 @@ func Optimize(taskGroup map[string]*api.Task, nodes []scheduler.NodeInfo, config
 			}
 
 			plan[task_idx] = j
-			log.Debugf("j = %d\n", j)
+			log.L.Debugf("j = %d\n", j)
 
 			if j < 0 {
 				// not fit
@@ -219,7 +218,7 @@ func Optimize(taskGroup map[string]*api.Task, nodes []scheduler.NodeInfo, config
 			} else {
 				TAU.Set(task_idx, j, P(nodes[j]))
 
-				log.Info("vaporize pheromone")
+				log.L.Info("vaporize pheromone")
 				if task_idx < len(taskNames)-1 {
 					for j := 0; j < TAU.Cols(); j++ {
 						TAU.Set(task_idx+1, j, (1.0-RHO)*TAU.Get(task_idx, j))
@@ -227,7 +226,7 @@ func Optimize(taskGroup map[string]*api.Task, nodes []scheduler.NodeInfo, config
 					TAU.Set(task_idx+1, j, (1.0-RHO)*P(nodes[j]))
 				}
 
-				log.Info("reduce the chosen resource")
+				log.L.Info("reduce the chosen resource")
 				node := nodes[j]
 				node.AvailableResources.MemoryBytes -= task.Spec.Resources.Reservations.MemoryBytes
 				node.AvailableResources.NanoCPUs -= task.Spec.Resources.Reservations.NanoCPUs

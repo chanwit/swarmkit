@@ -10,8 +10,6 @@ import (
 	"github.com/docker/swarmkit/manager/state/store"
 	"github.com/docker/swarmkit/protobuf/ptypes"
 	"golang.org/x/net/context"
-
-	_ "github.com/chanwit/aco"
 )
 
 const (
@@ -538,6 +536,17 @@ func (s *Scheduler) scheduleTaskGroup(ctx context.Context, taskGroup map[string]
 		s.noSuitableNode(ctx, taskGroup, schedulingDecisions)
 		return
 	}
+
+	cf, plan := Optimize(taskGroup, nodes, &Config{
+		Ants:  100,
+		Alpha: 1.0,
+		Beta:  1.0,
+		Rho:   0.01,
+		Q:     0.1,
+	})
+
+	log.G(ctx).Debugf("cf = %v", cf)
+	log.G(ctx).Debugf("plan = %v", plan)
 
 	failedConstraints := make(map[int]bool) // key is index in nodes slice
 	nodeIter := 0

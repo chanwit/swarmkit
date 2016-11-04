@@ -1,4 +1,4 @@
-package aco
+package scheduler
 
 import (
 	"bytes"
@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"text/tabwriter"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/docker/swarmkit/log"
 	"github.com/skelterjohn/go.matrix"
 )
 
@@ -67,5 +67,5 @@ func print(mat *matrix.DenseMatrix) {
 		fmt.Fprint(w, "\n")
 	}
 	w.Flush()
-	log.Debugln(buf.String())
+	log.L.Debugln(buf.String())
 }
