@@ -39,6 +39,10 @@ type Config struct {
 type Plan [PLAN_SIZE]int
 
 func P(n NodeInfo) float64 {
+	if n.Description == nil {
+		return 0.0
+	}
+
 	e := 0.0
 	R_c := float64(n.AvailableResources.NanoCPUs) / float64(n.Description.Resources.NanoCPUs)
 	R_m := float64(n.AvailableResources.MemoryBytes) / float64(n.Description.Resources.MemoryBytes)
@@ -69,10 +73,12 @@ func greedyInit(taskGroup map[string]*api.Task, nodes []NodeInfo) *matrix.DenseM
 		task := taskGroup[k]
 		node := nodes[col]
 
+		taskResourceReservation := resourceReservations(task)
+
 		// TODO: if assign OK
 		// greedy should assign tasks and reduce the resource
-		node.AvailableResources.MemoryBytes -= task.Spec.Resources.Reservations.MemoryBytes
-		node.AvailableResources.NanoCPUs -= task.Spec.Resources.Reservations.NanoCPUs
+		node.AvailableResources.MemoryBytes -= taskResourceReservation.MemoryBytes
+		node.AvailableResources.NanoCPUs -= taskResourceReservation.NanoCPUs
 		nodes[col] = node
 
 		tau := P(node)
@@ -86,7 +92,7 @@ func greedyInit(taskGroup map[string]*api.Task, nodes []NodeInfo) *matrix.DenseM
 }
 
 func taskFitsNode(task *api.Task, node NodeInfo) bool {
-	t := task.Spec.Resources.Reservations
+	t := resourceReservations(task)
 	n := node.AvailableResources
 	return (n.MemoryBytes >= t.MemoryBytes) && (n.NanoCPUs >= t.NanoCPUs)
 }
@@ -141,7 +147,7 @@ func Optimize(taskGroup map[string]*api.Task, nodes []NodeInfo, config *Config) 
 	plans := make(map[Plan]int)
 	for i := 0; i < ANTS; i++ {
 		var plan Plan
-		log.L.Infof("== ANT: %d\n", i)
+		log.L.Debugf("== ANT: %d\n", i)
 
 		// reset
 		for n, refResource := range refResources {
@@ -179,8 +185,9 @@ func Optimize(taskGroup map[string]*api.Task, nodes []NodeInfo, config *Config) 
 				log.L.Debugf("node cpu=%d\n", node.AvailableResources.NanoCPUs)
 
 				if taskFitsNode(task, node) {
-					node.AvailableResources.MemoryBytes -= task.Spec.Resources.Reservations.MemoryBytes
-					node.AvailableResources.NanoCPUs -= task.Spec.Resources.Reservations.NanoCPUs
+					taskResourceReservations := resourceReservations(task)
+					node.AvailableResources.MemoryBytes -= taskResourceReservations.MemoryBytes
+					node.AvailableResources.NanoCPUs -= taskResourceReservations.NanoCPUs
 				} else {
 					// TODO need to RR over nodes
 					log.L.Debug("task not fit node")
@@ -218,7 +225,7 @@ func Optimize(taskGroup map[string]*api.Task, nodes []NodeInfo, config *Config) 
 			} else {
 				TAU.Set(task_idx, j, P(nodes[j]))
 
-				log.L.Info("vaporize pheromone")
+				log.L.Debug("vaporize pheromone")
 				if task_idx < len(taskNames)-1 {
 					for j := 0; j < TAU.Cols(); j++ {
 						TAU.Set(task_idx+1, j, (1.0-RHO)*TAU.Get(task_idx, j))
@@ -226,10 +233,11 @@ func Optimize(taskGroup map[string]*api.Task, nodes []NodeInfo, config *Config) 
 					TAU.Set(task_idx+1, j, (1.0-RHO)*P(nodes[j]))
 				}
 
-				log.L.Info("reduce the chosen resource")
+				log.L.Debug("reduce the chosen resource")
 				node := nodes[j]
-				node.AvailableResources.MemoryBytes -= task.Spec.Resources.Reservations.MemoryBytes
-				node.AvailableResources.NanoCPUs -= task.Spec.Resources.Reservations.NanoCPUs
+				taskResourceReservations := resourceReservations(task)
+				node.AvailableResources.MemoryBytes -= taskResourceReservations.MemoryBytes
+				node.AvailableResources.NanoCPUs -= taskResourceReservations.NanoCPUs
 				nodes[j] = node
 			}
 
