@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"text/tabwriter"
 
+	"github.com/docker/swarmkit/api"
 	"github.com/docker/swarmkit/log"
 	"github.com/skelterjohn/go.matrix"
 )
@@ -68,4 +69,20 @@ func print(mat *matrix.DenseMatrix) {
 	}
 	w.Flush()
 	log.L.Debugln(buf.String())
+}
+
+func resourceReservations(task *api.Task) (reservations api.Resources) {
+	if task == nil {
+		return
+	}
+
+	spec := task.Spec
+	if spec.Resources != nil && spec.Resources.Reservations != nil {
+		reservations = *spec.Resources.Reservations
+	}
+	return
+}
+
+func availableResources(node NodeInfo) (resource api.Resources) {
+	return node.AvailableResources
 }
